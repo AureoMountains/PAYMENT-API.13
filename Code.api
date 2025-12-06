@@ -1,0 +1,108 @@
+from fastapi import FastAPI, HTTPException, Header, Depends
+from pydantic import BaseModel, Field
+from typing import Optional, Dict
+import uuid
+import time
+
+app = FastAPI()
+
+# ------------------------
+# Fake Databases
+# ------------------------
+payments_db: Dict[str, dict] = {}
+idempotency_db: Dict[str, dict] = {}
+
+# ------------------------
+# Models
+# ------------------------
+
+class PaymentRequest(BaseModel):
+    amount: float = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=3)
+    method: str
+    description: Optional[str] = None
+    customer_id: Optional[str] = None
+
+
+class PaymentResponse(BaseModel):
+    payment_id: str
+    status: str
+    processed_at: float
+    amount: float
+    currency: str
+    method: str
+    description: Optional[str]
+    converted_amount: float
+    converted_currency: str = "USD"
+    risk_flags: list
+
+
+# ------------------------
+# Mock Helpers
+# ------------------------
+
+def mock_convert_to_usd(amount: float, currency: str) -> float:
+    rates = {"BRL": 0.20, "EUR": 1.10, "USD": 1.0}
+    r = rates.get(currency.upper(), None)
+    if r is None:
+        raise HTTPException(status_code=400, detail="Unsupported currency")
+    return round(amount * r, 2)
+
+
+def mock_fraud_check(data: PaymentRequest) -> list:
+    flags = []
+    if data.amount > 5000:
+        flags.append("HIGH_AMOUNT")
+    if data.method not in ["credit_card", "pix", "debit", "paypal"]:
+        flags.append("UNKNOWN_METHOD")
+    return flags
+
+
+def require_token(x_token: str = Header(...)):
+    if x_token != "secret-token-123":
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# ------------------------
+# PUT Payment Endpoint
+# ------------------------
+
+@app.put("/payments/{payment_id}", response_model=PaymentResponse)
+def process_payment(
+    payment_id: str,
+    payload: PaymentRequest,
+    x_idempotency_key: Optional[str] = Header(None),
+    _: None = Depends(require_token)
+):
+    # Idempotency check
+    if x_idempotency_key:
+        if x_idempotency_key in idempotency_db:
+            return idempotency_db[x_idempotency_key]
+
+    # Fraud evaluation
+    risk_flags = mock_fraud_check(payload)
+
+    # Currency conversion
+    converted_amount = mock_convert_to_usd(payload.amount, payload.currency)
+
+    # Prepare stored payment
+    payment_record = {
+        "payment_id": payment_id,
+        "status": "processed" if not risk_flags else "review",
+        "processed_at": time.time(),
+        "amount": payload.amount,
+        "currency": payload.currency,
+        "method": payload.method,
+        "description": payload.description,
+        "converted_amount": converted_amount,
+        "converted_currency": "USD",
+        "risk_flags": risk_flags,
+    }
+
+    payments_db[payment_id] = payment_record
+
+    # Save idempotency result
+    if x_idempotency_key:
+        idempotency_db[x_idempotency_key] = payment_record
+
+    return payment_record
