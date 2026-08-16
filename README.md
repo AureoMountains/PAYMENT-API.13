@@ -8,7 +8,7 @@ I've been interested in hardware and programming since i was little, my father m
 
 Sometimes i practice my whereabout skills in 3D modeling (which are doubtful, but i can confidently work in projects with no hurdle whatsoever)
 
-* 🌍  I'm based in Italy
+* 🌍  I'm based in Brazil
 * 🚀  I'm currently working on [API: Authentication in payments](http://https://github.com/AureoMountains/PAYMENT-API.13/tree/main)
 * 🧠  I'm currently learning Cobol, base64 and 3D modeling
 * 👥  I'm looking to collaborate on website projects and game design
